@@ -28,6 +28,7 @@ import static android.app.WindowConfiguration.ACTIVITY_TYPE_UNDEFINED;
 import static android.app.WindowConfiguration.ROTATION_UNDEFINED;
 import static android.app.WindowConfiguration.WINDOWING_MODE_FULLSCREEN;
 import static android.app.WindowConfiguration.WINDOWING_MODE_MULTI_WINDOW;
+import static android.app.WindowConfiguration.WINDOWING_MODE_MOMENT;
 import static android.app.WindowConfiguration.WINDOWING_MODE_PINNED;
 import static android.app.WindowConfiguration.WINDOWING_MODE_UNDEFINED;
 import static android.content.pm.ActivityInfo.FLAG_ALLOW_UNTRUSTED_ACTIVITY_EMBEDDING;
@@ -1430,6 +1431,12 @@ class TaskFragment extends WindowContainer<WindowContainer> {
                 continue;
             }
 
+            final Task otherTask = other.asTask();
+            if (otherTask != null && otherTask.getWindowingMode() == WINDOWING_MODE_MOMENT) {
+                // Moment keeps fullscreen app bounds but only occupies its scaled task surface.
+                continue;
+            }
+
             // Must fill the parent to affect visibility.
             boolean affectsSiblingVisibility = other.fillsParentBounds();
             if (mEnableSeeThroughTaskFragments) {
@@ -2403,7 +2410,8 @@ class TaskFragment extends WindowContainer<WindowContainer> {
             final int candidateWindowingMode =
                     windowingMode != WINDOWING_MODE_UNDEFINED ? windowingMode : parentWindowingMode;
             if (WindowConfiguration.inMultiWindowMode(candidateWindowingMode)
-                    && candidateWindowingMode != WINDOWING_MODE_PINNED) {
+                    && candidateWindowingMode != WINDOWING_MODE_PINNED
+                    && candidateWindowingMode != WINDOWING_MODE_MOMENT) {
                 resolvedConfig.windowConfiguration.setWindowingMode(WINDOWING_MODE_FULLSCREEN);
             }
         }

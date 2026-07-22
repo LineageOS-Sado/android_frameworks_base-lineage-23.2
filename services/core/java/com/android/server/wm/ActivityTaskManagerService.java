@@ -2154,6 +2154,7 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
 
         if ((touchedActivity == null || r == touchedActivity) && r.isState(RESUMED)
                 && r == mRootWindowContainer.getTopResumedActivity()) {
+            updateHomeFocusedAppIfNeeded(task, touchedActivity);
             setLastResumedActivityUncheckLocked(r, "setFocusedTask-alreadyTop");
             return;
         }
@@ -2174,7 +2175,9 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
                         transition, null /* startTask */, null /* remote */, null /* display */);
             }
             mRootWindowContainer.resumeFocusedTasksTopActivities();
-        } else if (touchedActivity != null && touchedActivity.isFocusable()) {
+            updateHomeFocusedAppIfNeeded(task, touchedActivity);
+        } else if (!updateHomeFocusedAppIfNeeded(task, touchedActivity)
+                && touchedActivity != null && touchedActivity.isFocusable()) {
             final TaskFragment parent = touchedActivity.getTaskFragment();
             if (parent != null && parent.isEmbedded()) {
                 // Set the focused app directly if the focused window is currently embedded
@@ -2189,6 +2192,21 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
             // No order changes and focus-changes, alone, aren't captured in transitions.
             transition.abort();
         }
+    }
+
+    private boolean updateHomeFocusedAppIfNeeded(Task task, ActivityRecord touchedActivity) {
+        if (touchedActivity == null || !touchedActivity.isFocusable()
+                || !task.isActivityTypeHome()) {
+            return false;
+        }
+        final DisplayContent displayContent = touchedActivity.getDisplayContent();
+        if (displayContent == null) {
+            return false;
+        }
+        displayContent.setFocusedApp(touchedActivity);
+        mWindowManager.updateFocusedWindowLocked(UPDATE_FOCUS_NORMAL,
+                true /* updateInputWindows */);
+        return true;
     }
 
     @Override

@@ -6347,4 +6347,5 @@
 
   <!-- Action for opening trusted location settings page -->
   <java-symbol type="string" name="trusted_location_settings_action" />
+  <java-symbol type="string" name="moment_launch_disabled" />
 </resources>

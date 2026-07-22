@@ -200,5 +200,8 @@ interface ISystemUiProxy {
      */
     oneway void onSleepEvent(in MotionEvent event) = 61;
 
-    // Next id = 62
+    /** Notifies SystemUI that the gestural navigation handle was double tapped. */
+    oneway void onNavHandleDoubleTap(int displayId, int taskId) = 62;
+
+    // Next id = 63
 }

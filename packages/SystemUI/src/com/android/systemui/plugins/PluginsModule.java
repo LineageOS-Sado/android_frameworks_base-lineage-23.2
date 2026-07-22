@@ -40,6 +40,7 @@ import dagger.Binds;
 import dagger.Module;
 import dagger.Provides;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.concurrent.Executor;
 
@@ -97,6 +98,10 @@ public abstract class PluginsModule {
     @Provides
     static PluginManager.Config providesPluginConfig(Context context) {
         String[] plugins = context.getResources().getStringArray(R.array.config_pluginAllowlist);
-        return new PluginManager.Config(Arrays.asList(plugins));
+        ArrayList<String> allowlist = new ArrayList<>(Arrays.asList(plugins));
+        // MomentArc is a platform-signed SystemUI component shipped with the product. Keep it
+        // trusted even when a product overlay replaces config_pluginAllowlist.
+        allowlist.add("org.uwuaosp.systemui.moment.arc");
+        return new PluginManager.Config(allowlist);
     }
 }

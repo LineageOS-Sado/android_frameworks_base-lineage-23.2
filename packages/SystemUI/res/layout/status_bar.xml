@@ -72,6 +72,8 @@
                 android:layout_gravity="center_vertical|start"
                 android:clipChildren="false">
 
+                <include layout="@layout/status_bar_lyric" />
+
                 <include layout="@layout/heads_up_status_bar_layout" />
 
                 <!-- The alpha of the start side is controlled by PhoneStatusBarTransitions, and the
@@ -110,6 +112,8 @@
                     <include layout="@layout/ongoing_activity_chip_secondary"
                         android:id="@+id/ongoing_activity_chip_secondary"
                         android:visibility="gone"/>
+
+                    <include layout="@layout/status_bar_lyric_inline" />
 
                     <com.android.systemui.statusbar.AlphaOptimizedFrameLayout
                         android:id="@+id/notification_icon_area"

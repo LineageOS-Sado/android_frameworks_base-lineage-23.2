@@ -13863,6 +13863,76 @@ public final class Settings {
         @Readable
         public static final String CONTEXTUAL_SEARCH_PACKAGE = "contextual_search_package";
 
+        /** @hide */
+        @Readable
+        public static final String MOMENT_ENABLED = "moment_enabled";
+
+        /** @hide */
+        @Readable
+        public static final String MOMENT_ARC_GESTURE_ENABLED =
+                "moment_arc_gesture_enabled";
+
+        /** @hide */
+        @Readable
+        public static final String MOMENT_NAV_HANDLE_DOUBLE_TAP_ENABLED =
+                "moment_nav_handle_double_tap_enabled";
+
+
+        /**
+         * Show lyric in status bar when playing music
+         * <ul>
+         *    <li> 0 = disabled </li>
+         *    <li> 1 = enabled </li>
+         * </ul>
+         *
+         * @hide
+         */
+        @Readable
+        public static final String STATUS_BAR_SHOW_LYRIC = "status_bar_show_lyric";
+
+        /**
+         * Controls where status bar lyric is shown when playing music.
+         * <ul>
+         *    <li> 0 = replace the start-side status bar content </li>
+         *    <li> 1 = show to the right of the clock, replacing notification app icons </li>
+         * </ul>
+         *
+         * @hide
+         */
+        @Readable
+        public static final String STATUS_BAR_LYRIC_POSITION = "status_bar_lyric_position";
+
+        /**
+         * Controls whether translated lyric text is shown when available.
+         * <ul>
+         *    <li> 0 = hidden </li>
+         *    <li> 1 = shown </li>
+         * </ul>
+         *
+         * @hide
+         */
+        @Readable
+        public static final String STATUS_BAR_LYRIC_SHOW_TRANSLATION =
+                "status_bar_lyric_show_translation";
+
+        /**
+         * Controls whether the music app icon is hidden in clock-right lyric mode.
+         * <ul>
+         *    <li> 0 = show icon </li>
+         *    <li> 1 = hide icon </li>
+         * </ul>
+         *
+         * @hide
+         */
+        @Readable
+        public static final String STATUS_BAR_LYRIC_HIDE_ICON_CLOCK_RIGHT =
+                "status_bar_lyric_hide_icon_clock_right";
+
+        /** Semicolon-separated package allowlist used by the status bar lyric provider. @hide */
+        @Readable
+        public static final String STATUS_BAR_LYRIC_ALLOWED_PACKAGES =
+                "status_bar_lyric_allowed_packages";
+
         /**
          * Integer property which determines whether advanced protection is on or not.
          * @hide

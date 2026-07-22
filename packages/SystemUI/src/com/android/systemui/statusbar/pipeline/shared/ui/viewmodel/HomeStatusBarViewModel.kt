@@ -19,6 +19,7 @@ package com.android.systemui.statusbar.pipeline.shared.ui.viewmodel
 import android.annotation.ColorInt
 import android.graphics.Rect
 import android.graphics.RectF
+import android.provider.Settings
 import android.view.Display
 import android.view.View
 import androidx.compose.runtime.getValue
@@ -51,6 +52,7 @@ import com.android.systemui.scene.shared.model.Scenes
 import com.android.systemui.shade.domain.interactor.ShadeDisplaysInteractor
 import com.android.systemui.shade.domain.interactor.ShadeInteractor
 import com.android.systemui.shade.shared.flag.ShadeWindowGoesAround
+import com.android.systemui.shared.settings.data.repository.SecureSettingsRepository
 import com.android.systemui.statusbar.chips.mediaprojection.domain.model.MediaProjectionStopDialogModel
 import com.android.systemui.statusbar.chips.sharetoapp.ui.viewmodel.ShareToAppChipViewModel
 import com.android.systemui.statusbar.chips.ui.model.MultipleOngoingActivityChipsModel
@@ -201,6 +203,11 @@ interface HomeStatusBarViewModel : Activatable {
     val shouldShowOperatorNameView: Flow<Boolean>
     val isClockVisible: Flow<VisibilityModel>
     val isNotificationIconContainerVisible: Flow<VisibilityModel>
+    val isLyricVisible: Flow<VisibilityModel>
+    val isLyricEnabled: Flow<Boolean>
+    val isLyricClockRightMode: Flow<Boolean>
+    val isLyricTranslationEnabled: Flow<Boolean>
+    val isLyricClockRightHideIcon: Flow<Boolean>
     val hideStartSideContentForHeadsUp: Flow<Boolean>
 
     /**
@@ -277,6 +284,7 @@ constructor(
     @Background bgDispatcher: CoroutineDispatcher,
     shadeDisplaysInteractor: Provider<ShadeDisplaysInteractor>,
     private val uiEventLogger: StatusBarChipsUiEventLogger,
+    private val secureSettingsRepository: SecureSettingsRepository
 ) : HomeStatusBarViewModel, ExclusiveActivatable() {
 
     private val hydrator = Hydrator(traceName = "HomeStatusBarViewModel.hydrator")
@@ -702,6 +710,43 @@ constructor(
                 columnPrefix = COL_PREFIX_NOTIF_CONTAINER,
                 initialValue = VisibilityModel(false.toVisibleOrInvisible(), false),
             )
+            .flowOn(bgDispatcher)
+
+    override val isLyricVisible: Flow<VisibilityModel> =
+        combine(
+                isNotificationIconContainerVisible,
+                hideStartSideContentForHeadsUp,
+                hasOngoingActivityChips,
+            ) {
+                isNotificationIconContainerVisible, hideStartSideContentForHeadsUp, hasOngoingActivityChips ->
+                val showLyric =
+                    (isNotificationIconContainerVisible.visibility == View.VISIBLE) &&
+                        !hideStartSideContentForHeadsUp && !hasOngoingActivityChips
+                VisibilityModel(showLyric.toVisibleOrGone(), false)
+            }
+            .distinctUntilChanged()
+            .flowOn(bgDispatcher)
+
+    override val isLyricEnabled: Flow<Boolean> =
+        secureSettingsRepository
+            .boolSetting(Settings.Secure.STATUS_BAR_SHOW_LYRIC, false)
+            .flowOn(bgDispatcher)
+
+    override val isLyricClockRightMode: Flow<Boolean> =
+        secureSettingsRepository
+            .intSetting(Settings.Secure.STATUS_BAR_LYRIC_POSITION, 0)
+            .map { it == com.android.systemui.statusbar.phone.LyricViewController.LYRIC_POSITION_CLOCK_RIGHT }
+            .distinctUntilChanged()
+            .flowOn(bgDispatcher)
+
+    override val isLyricTranslationEnabled: Flow<Boolean> =
+        secureSettingsRepository
+            .boolSetting(Settings.Secure.STATUS_BAR_LYRIC_SHOW_TRANSLATION, false)
+            .flowOn(bgDispatcher)
+
+    override val isLyricClockRightHideIcon: Flow<Boolean> =
+        secureSettingsRepository
+            .boolSetting(Settings.Secure.STATUS_BAR_LYRIC_HIDE_ICON_CLOCK_RIGHT, false)
             .flowOn(bgDispatcher)
 
     private val isSystemInfoVisible =
