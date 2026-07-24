@@ -509,6 +509,18 @@ public class ImageReader implements AutoCloseable {
     }
 
     /**
+     * Set the name used by the native buffer consumer backing this reader.
+     *
+     * @param consumerName non-null name for the buffer consumer
+     * @hide
+     */
+    public void setName(String consumerName) {
+        if (consumerName != null) {
+            nativeSetName(consumerName);
+        }
+    }
+
+    /**
      * <p>
      * Acquire the latest {@link Image} from the ImageReader's queue, dropping older
      * {@link Image images}. Returns {@code null} if no new image is available.
@@ -1456,6 +1468,8 @@ public class ImageReader implements AutoCloseable {
     private synchronized native Surface nativeGetSurface();
     private synchronized native int nativeDetachImage(Image i, boolean throwISEOnly);
     private synchronized native void nativeDiscardFreeBuffers();
+
+    private synchronized native void nativeSetName(String consumerName);
 
     /**
      * @return A return code {@code ACQUIRE_*}

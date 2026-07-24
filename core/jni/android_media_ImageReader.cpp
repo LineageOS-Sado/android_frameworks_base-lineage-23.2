@@ -324,6 +324,22 @@ static BufferItemConsumer* ImageReader_getBufferConsumer(JNIEnv* env, jobject th
     return ctx->getBufferConsumer();
 }
 
+static void ImageReader_setName(JNIEnv* env, jobject thiz, jstring consumerName)
+{
+    BufferItemConsumer* consumer = ImageReader_getBufferConsumer(env, thiz);
+    if (consumer == nullptr) {
+        return;
+    }
+
+    const char* name = env->GetStringUTFChars(consumerName, nullptr);
+    if (name == nullptr) {
+        return;
+    }
+
+    consumer->setName(String8(name));
+    env->ReleaseStringUTFChars(consumerName, name);
+}
+
 static void Image_setBufferItem(JNIEnv* env, jobject thiz,
         const BufferItem* buffer)
 {
@@ -1011,6 +1027,7 @@ static const JNINativeMethod gImageReaderMethods[] =
          {"nativeImageSetup", "(Landroid/media/Image;)I", (void*)ImageReader_imageSetup},
          {"nativeGetSurface", "()Landroid/view/Surface;", (void*)ImageReader_getSurface},
          {"nativeDetachImage", "(Landroid/media/Image;Z)I", (void*)ImageReader_detachImage},
+         {"nativeSetName", "(Ljava/lang/String;)V", (void*)ImageReader_setName},
 #ifdef __ANDROID__
          {"nativeCreateImagePlanes",
           "(ILandroid/graphics/GraphicBuffer;IIIIII)[Landroid/media/ImageReader$ImagePlane;",
