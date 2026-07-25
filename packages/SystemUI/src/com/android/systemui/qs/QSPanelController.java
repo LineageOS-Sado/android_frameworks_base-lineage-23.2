@@ -21,9 +21,6 @@ import static com.android.systemui.media.dagger.MediaModule.QS_PANEL;
 import static com.android.systemui.qs.QSPanel.QS_SHOW_BRIGHTNESS;
 import static com.android.systemui.qs.dagger.QSScopeModule.QS_USING_MEDIA_PLAYER;
 
-import android.database.ContentObserver;
-import android.os.Handler;
-import android.os.UserHandle;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -52,8 +49,6 @@ import com.android.systemui.statusbar.policy.ConfigurationController;
 import com.android.systemui.statusbar.policy.SplitShadeStateController;
 import com.android.systemui.tuner.TunerService;
 
-import lineageos.providers.LineageSettings;
-
 import kotlinx.coroutines.flow.StateFlow;
 
 import javax.inject.Inject;
@@ -78,13 +73,6 @@ public class QSPanelController extends QSPanelControllerBase<QSPanel> {
     private boolean mListening;
 
     private final boolean mSceneContainerEnabled;
-    private final ContentObserver mBrightnessSettingsObserver = new ContentObserver(new Handler()) {
-        @Override
-        public void onChange(boolean selfChange) {
-            updateBrightnessSettings();
-        }
-    };
-
     private int mLastDensity;
     private final BrightnessSliderController.Factory mBrightnessSliderControllerFactory;
     private final BrightnessController.Factory mBrightnessControllerFactory;
@@ -166,14 +154,6 @@ public class QSPanelController extends QSPanelControllerBase<QSPanel> {
         }
         switchTileLayout(true);
         mBrightnessMirrorHandler.onQsPanelAttached();
-        getContext().getContentResolver().registerContentObserver(
-                LineageSettings.Secure.getUriFor(
-                        LineageSettings.Secure.QS_SHOW_BRIGHTNESS_SLIDER),
-                false, mBrightnessSettingsObserver, UserHandle.USER_ALL);
-        getContext().getContentResolver().registerContentObserver(
-                LineageSettings.Secure.getUriFor(
-                        LineageSettings.Secure.QS_BRIGHTNESS_SLIDER_POSITION),
-                false, mBrightnessSettingsObserver, UserHandle.USER_ALL);
         updateBrightnessSettings();
         PagedTileLayout pagedTileLayout= ((PagedTileLayout) mView.getOrCreateTileLayout());
         pagedTileLayout.setOnTouchListener(mTileLayoutTouchListener);
@@ -188,7 +168,6 @@ public class QSPanelController extends QSPanelControllerBase<QSPanel> {
 
     @Override
     protected void onViewDetached() {
-        getContext().getContentResolver().unregisterContentObserver(mBrightnessSettingsObserver);
         mTunerService.removeTunable(mView);
         mBrightnessMirrorHandler.onQsPanelDettached();
         super.onViewDetached();
@@ -226,13 +205,7 @@ public class QSPanelController extends QSPanelControllerBase<QSPanel> {
     }
 
     private void updateBrightnessSettings() {
-        int show = LineageSettings.Secure.getIntForUser(getContext().getContentResolver(),
-                LineageSettings.Secure.QS_SHOW_BRIGHTNESS_SLIDER, 1,
-                UserHandle.USER_CURRENT);
-        int position = LineageSettings.Secure.getIntForUser(getContext().getContentResolver(),
-                LineageSettings.Secure.QS_BRIGHTNESS_SLIDER_POSITION, 0,
-                UserHandle.USER_CURRENT);
-        mView.updateBrightnessView(show != 0, position == 0);
+        mView.updateBrightnessView(true, false);
     }
 
 

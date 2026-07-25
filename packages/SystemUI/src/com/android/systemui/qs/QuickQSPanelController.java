@@ -22,10 +22,6 @@ import static com.android.systemui.qs.dagger.QSScopeModule.QS_USING_MEDIA_PLAYER
 
 import androidx.annotation.VisibleForTesting;
 
-import android.database.ContentObserver;
-import android.os.Handler;
-import android.os.UserHandle;
-
 import com.android.internal.logging.MetricsLogger;
 import com.android.internal.logging.UiEventLogger;
 import com.android.systemui.dump.DumpManager;
@@ -55,9 +51,6 @@ import javax.inject.Inject;
 import javax.inject.Named;
 import javax.inject.Provider;
 
-import lineageos.providers.LineageSettings;
-
-
 /** Controller for {@link QuickQSPanel}. */
 @QSScope
 public class QuickQSPanelController extends QSPanelControllerBase<QuickQSPanel> {
@@ -68,13 +61,6 @@ public class QuickQSPanelController extends QSPanelControllerBase<QuickQSPanel> 
     private final BrightnessSliderController mBrightnessSliderController;
     private final BrightnessController mBrightnessController;
     private boolean mListening;
-    private final ContentObserver mBrightnessSettingsObserver = new ContentObserver(new Handler()) {
-        @Override
-        public void onChange(boolean selfChange) {
-            updateBrightnessSettings();
-        }
-    };
-
     @Inject
     QuickQSPanelController(QuickQSPanel view, QSHost qsHost,
             QSCustomizerController qsCustomizerController,
@@ -136,20 +122,11 @@ public class QuickQSPanelController extends QSPanelControllerBase<QuickQSPanel> 
     @Override
     protected void onViewAttached() {
         super.onViewAttached();
-        getContext().getContentResolver().registerContentObserver(
-                LineageSettings.Secure.getUriFor(
-                        LineageSettings.Secure.QS_SHOW_BRIGHTNESS_SLIDER),
-                false, mBrightnessSettingsObserver, UserHandle.USER_ALL);
-        getContext().getContentResolver().registerContentObserver(
-                LineageSettings.Secure.getUriFor(
-                        LineageSettings.Secure.QS_BRIGHTNESS_SLIDER_POSITION),
-                false, mBrightnessSettingsObserver, UserHandle.USER_ALL);
         updateBrightnessSettings();
     }
 
     @Override
     protected void onViewDetached() {
-        getContext().getContentResolver().unregisterContentObserver(mBrightnessSettingsObserver);
         mBrightnessController.unregisterCallbacks();
         super.onViewDetached();
     }
@@ -167,14 +144,7 @@ public class QuickQSPanelController extends QSPanelControllerBase<QuickQSPanel> 
     }
 
     private void updateBrightnessSettings() {
-        int show = LineageSettings.Secure.getIntForUser(getContext().getContentResolver(),
-                LineageSettings.Secure.QS_SHOW_BRIGHTNESS_SLIDER, 1,
-                UserHandle.USER_CURRENT);
-        int position = LineageSettings.Secure.getIntForUser(getContext().getContentResolver(),
-                LineageSettings.Secure.QS_BRIGHTNESS_SLIDER_POSITION, 0,
-                UserHandle.USER_CURRENT);
-        // 0 = hidden, 1 = expanded QS only, 2 = always (including QQS).
-        mView.updateBrightnessView(show == 2, position == 0);
+        mView.updateBrightnessView(true, false);
     }
 
     private void setMaxTiles(int parseNumTiles) {
