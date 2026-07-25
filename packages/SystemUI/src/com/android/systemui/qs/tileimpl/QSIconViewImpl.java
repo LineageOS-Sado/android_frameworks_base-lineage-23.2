@@ -242,6 +242,12 @@ public class QSIconViewImpl extends QSIconView {
         mTint = color;
     }
 
+    /** Applies a tint without allowing a pending state animation to overwrite it afterwards. */
+    public void setTintImmediately(ImageView iv, int color) {
+        mColorAnimator.cancel();
+        setTint(iv, color);
+    }
+
     protected int getIconMeasureMode() {
         return MeasureSpec.EXACTLY;
     }

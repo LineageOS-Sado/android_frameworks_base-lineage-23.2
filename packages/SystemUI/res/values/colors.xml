@@ -22,6 +22,8 @@
     <color name="system_bar_background_opaque">#ff000000</color>
     <color name="system_bar_background_transparent">#00000000</color>
     <color name="qs_tile_divider">#29ffffff</color><!-- 16% white -->
+    <!-- A11 QS inactive controls use a frosted white surface over the shade. -->
+    <color name="a11_qs_inactive_background">#FFFFFFFF</color>
     <color name="qs_detail_button_white">#B3FFFFFF</color><!-- 70% white -->
     <color name="status_bar_clock_color">#FFFFFFFF</color>
     <!-- The main FG tint for shade header items -->

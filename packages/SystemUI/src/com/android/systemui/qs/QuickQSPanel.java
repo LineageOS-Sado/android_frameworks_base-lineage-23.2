@@ -179,13 +179,20 @@ public class QuickQSPanel extends QSPanel {
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT,
                     LayoutParams.WRAP_CONTENT);
             setLayoutParams(lp);
-            setMaxColumns(4);
+            setMaxColumns(5);
+        }
+
+        @Override
+        public boolean setMaxColumns(int maxColumns) {
+            return super.setMaxColumns(5);
         }
 
         @Override
         public boolean updateResources() {
             mResourceCellHeightResId = R.dimen.qs_quick_tile_size;
             boolean b = super.updateResources();
+            mResourceColumns = 5;
+            b |= setMaxColumns(5);
             mMaxAllowedRows = getResources().getInteger(R.integer.quick_qs_panel_max_rows);
             return b;
         }

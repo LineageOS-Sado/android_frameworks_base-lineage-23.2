@@ -16,6 +16,7 @@
 
 package com.android.systemui.qs.tileimpl
 
+import android.animation.AnimatorSet
 import android.animation.ArgbEvaluator
 import android.animation.PropertyValuesHolder
 import android.animation.ValueAnimator
@@ -55,6 +56,7 @@ import androidx.core.animation.doOnCancel
 import androidx.core.animation.doOnEnd
 import androidx.core.animation.doOnStart
 import androidx.core.graphics.drawable.updateBounds
+import com.android.app.animation.Interpolators
 import com.android.app.tracing.traceSection
 import com.android.settingslib.Utils
 import com.android.systemui.Flags
@@ -62,6 +64,7 @@ import com.android.systemui.FontSizeUtils
 import com.android.systemui.animation.Expandable
 import com.android.systemui.animation.LaunchableView
 import com.android.systemui.animation.LaunchableViewDelegate
+import com.android.systemui.animation.view.LaunchableLinearLayout
 import com.android.systemui.haptics.qs.QSLongPressEffect
 import com.android.systemui.plugins.qs.QSIconView
 import com.android.systemui.plugins.qs.QSTile
@@ -121,8 +124,16 @@ constructor(
         }
 
     private val colorActive = Utils.getColorAttrDefaultColor(context, R.attr.shadeActive)
-    private val colorInactive = Utils.getColorAttrDefaultColor(context, R.attr.shadeInactive)
-    private val colorUnavailable = Utils.getColorAttrDefaultColor(context, R.attr.shadeDisabled)
+    private var colorInactive =
+        if (
+            resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+                Configuration.UI_MODE_NIGHT_YES
+        ) {
+            Utils.getColorAttrDefaultColor(context, R.attr.shadeInactive)
+        } else {
+            context.getColor(R.color.a11_qs_inactive_background)
+        }
+    private var colorUnavailable = Utils.applyAlpha(UNAVAILABLE_ALPHA, colorInactive)
 
     private val overlayColorActive =
         Utils.applyAlpha(
@@ -135,17 +146,16 @@ constructor(
             Utils.getColorAttrDefaultColor(context, R.attr.onShadeInactive),
         )
 
-    private val colorLabelActive = Utils.getColorAttrDefaultColor(context, R.attr.onShadeActive)
-    private val colorLabelInactive = Utils.getColorAttrDefaultColor(context, R.attr.onShadeInactive)
+    private var colorLabelActive = Color.BLACK
+    private var colorLabelInactive = Color.BLACK
     private val colorLabelUnavailable = Utils.getColorAttrDefaultColor(context, R.attr.outline)
 
-    private val colorSecondaryLabelActive =
-        Utils.getColorAttrDefaultColor(context, R.attr.onShadeActiveVariant)
-    private val colorSecondaryLabelInactive =
-        Utils.getColorAttrDefaultColor(context, R.attr.onShadeInactiveVariant)
+    private var colorSecondaryLabelActive = Color.BLACK
+    private var colorSecondaryLabelInactive = Color.BLACK
     private val colorSecondaryLabelUnavailable =
         Utils.getColorAttrDefaultColor(context, R.attr.outline)
 
+    private lateinit var iconContainer: LaunchableLinearLayout
     private lateinit var label: TextView
     protected lateinit var secondaryLabel: TextView
     private lateinit var labelContainer: IgnorableChildLinearLayout
@@ -166,6 +176,15 @@ constructor(
     private var backgroundColor: Int = 0
     private var backgroundOverlayColor: Int = 0
 
+    private var radiusActive: Float = 0f
+    private var radiusInactive: Float = 0f
+    private val shapeAnimator =
+        ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = QS_ANIM_LENGTH
+            interpolator = Interpolators.FAST_OUT_SLOW_IN
+            addUpdateListener { changeCornerRadius(it.animatedValue as Float) }
+        }
+
     private val singleAnimator: ValueAnimator =
         ValueAnimator().apply {
             setDuration(QS_ANIM_LENGTH)
@@ -181,6 +200,8 @@ constructor(
                 )
             }
         }
+
+    private val tileAnimator = AnimatorSet().apply { playTogether(singleAnimator, shapeAnimator) }
 
     private var accessibilityClass: String? = null
     private var stateDescriptionDeltas: CharSequence? = null
@@ -218,6 +239,7 @@ constructor(
         get() = initialLongPressProperties != null && finalLongPressProperties != null
 
     init {
+        updateLabelColorsForTheme()
         val typedValue = TypedValue()
         if (!getContext().theme.resolveAttribute(R.attr.isQsTheme, typedValue, true)) {
             throw IllegalStateException(
@@ -226,21 +248,32 @@ constructor(
             )
         }
         setId(generateViewId())
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL or Gravity.START
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
         clipChildren = false
         clipToPadding = false
-        isFocusable = true
-        background = createTileBackground()
+
+        val iconContainerSize = resources.getDimensionPixelSize(R.dimen.qs_quick_tile_size)
+        radiusActive = iconContainerSize / 2f
+        radiusInactive = iconContainerSize / 4f
+        iconContainer = LaunchableLinearLayout(context).apply {
+            layoutParams = LayoutParams(iconContainerSize, iconContainerSize)
+            clipChildren = false
+            clipToPadding = false
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            isFocusable = true
+            background = createTileBackground()
+        }
         setColor(getBackgroundColorForState(QSTile.State.DEFAULT_STATE))
 
         val padding = resources.getDimensionPixelSize(R.dimen.qs_tile_padding)
-        val startPadding = resources.getDimensionPixelSize(R.dimen.qs_tile_start_padding)
-        setPaddingRelative(startPadding, padding, padding, padding)
-
         val iconSize = resources.getDimensionPixelSize(R.dimen.qs_icon_size)
-        addView(icon, LayoutParams(iconSize, iconSize))
+        iconContainer.setPaddingRelative(padding, padding, padding, padding)
+        iconContainer.addView(icon, LayoutParams(iconSize, iconSize))
+        changeCornerRadius(getCornerRadiusForState(QSTile.State.DEFAULT_STATE))
+        addView(iconContainer)
 
         createAndAddLabels()
         createAndAddSideView()
@@ -267,8 +300,21 @@ constructor(
     }
 
     fun updateResources() {
+        updateBackgroundColorsForTheme()
+        updateLabelColorsForTheme()
         FontSizeUtils.updateFontSize(label, R.dimen.qs_tile_text_size)
         FontSizeUtils.updateFontSize(secondaryLabel, R.dimen.qs_tile_text_size)
+
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+
+        val iconContainerSize = resources.getDimensionPixelSize(R.dimen.qs_quick_tile_size)
+        radiusActive = iconContainerSize / 2f
+        radiusInactive = iconContainerSize / 4f
+        iconContainer.layoutParams.apply {
+            height = iconContainerSize
+            width = iconContainerSize
+        }
 
         val iconSize = context.resources.getDimensionPixelSize(R.dimen.qs_icon_size)
         icon.layoutParams.apply {
@@ -277,11 +323,13 @@ constructor(
         }
 
         val padding = resources.getDimensionPixelSize(R.dimen.qs_tile_padding)
-        val startPadding = resources.getDimensionPixelSize(R.dimen.qs_tile_start_padding)
-        setPaddingRelative(startPadding, padding, padding, padding)
+        iconContainer.setPaddingRelative(padding, padding, padding, padding)
 
         val labelMargin = resources.getDimensionPixelSize(R.dimen.qs_label_container_margin)
-        (labelContainer.layoutParams as MarginLayoutParams).apply { marginStart = labelMargin }
+        (labelContainer.layoutParams as MarginLayoutParams).apply {
+            marginStart = labelMargin
+            topMargin = padding / 2
+        }
 
         (sideView.layoutParams as MarginLayoutParams).apply { marginStart = labelMargin }
         (chevronView.layoutParams as MarginLayoutParams).apply {
@@ -295,14 +343,54 @@ constructor(
             marginEnd = endMargin
         }
 
-        background = createTileBackground()
-        setColor(backgroundColor)
+        iconContainer.background = createTileBackground()
+        setColor(getBackgroundColorForState(lastState))
         setOverlayColor(backgroundOverlayColor)
+        changeCornerRadius(getCornerRadiusForState(lastState))
+        setLabelColor(getLabelColorForState(lastState, lastDisabledByPolicy))
+        setSecondaryLabelColor(
+            getSecondaryLabelColorForState(lastState, lastDisabledByPolicy)
+        )
+        lastIconTint = getA11IconColorForState(lastState, lastDisabledByPolicy)
+        if (icon.mIcon is ImageView) {
+            icon.setTintImmediately(icon.mIcon as ImageView, lastIconTint)
+        }
+    }
+
+    private fun updateBackgroundColorsForTheme() {
+        val night =
+            resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+                Configuration.UI_MODE_NIGHT_YES
+        colorInactive =
+            if (night) {
+                Utils.getColorAttrDefaultColor(context, R.attr.shadeInactive)
+            } else {
+                context.getColor(R.color.a11_qs_inactive_background)
+            }
+        colorUnavailable = Utils.applyAlpha(UNAVAILABLE_ALPHA, colorInactive)
+    }
+
+    private fun updateLabelColorsForTheme() {
+        val night =
+            resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+                Configuration.UI_MODE_NIGHT_YES
+        colorLabelActive =
+            if (night) Utils.getColorAttrDefaultColor(context, R.attr.onShadeInactive)
+            else Color.BLACK
+        colorLabelInactive =
+            if (night) Utils.getColorAttrDefaultColor(context, R.attr.onShadeInactiveVariant)
+            else Color.BLACK
+        colorSecondaryLabelActive =
+            if (night) Utils.getColorAttrDefaultColor(context, R.attr.onShadeInactiveVariant)
+            else Color.BLACK
+        colorSecondaryLabelInactive =
+            if (night) Utils.getColorAttrDefaultColor(context, R.attr.outline)
+            else Color.BLACK
     }
 
     private fun createAndAddLabels() {
         labelContainer =
-            LayoutInflater.from(context).inflate(R.layout.qs_tile_label, this, false)
+            LayoutInflater.from(context).inflate(R.layout.qs_tile_label_vertical, this, false)
                 as IgnorableChildLinearLayout
         label = labelContainer.requireViewById(R.id.tile_label)
         secondaryLabel = labelContainer.requireViewById(R.id.app_label)
@@ -322,7 +410,7 @@ constructor(
 
     private fun createAndAddSideView() {
         sideView =
-            LayoutInflater.from(context).inflate(R.layout.qs_tile_side_icon, this, false)
+            LayoutInflater.from(context).inflate(R.layout.qs_tile_side_icon_a11, this, false)
                 as ViewGroup
         customDrawableView = sideView.requireViewById(R.id.customDrawable)
         chevronView = sideView.requireViewById(R.id.chevron)
@@ -333,9 +421,9 @@ constructor(
     private fun createTileBackground(): Drawable {
         qsTileBackground =
             if (Flags.qsTileFocusState()) {
-                mContext.getDrawable(R.drawable.qs_tile_background_flagged) as RippleDrawable
+                mContext.getDrawable(R.drawable.qs_tile_background_flagged_no_mask) as RippleDrawable
             } else {
-                mContext.getDrawable(R.drawable.qs_tile_background) as RippleDrawable
+                mContext.getDrawable(R.drawable.qs_tile_background_no_mask) as RippleDrawable
             }
         qsTileFocusBackground = mContext.getDrawable(R.drawable.qs_tile_focused_background)!!
         backgroundDrawable =
@@ -380,10 +468,10 @@ constructor(
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
         if (Flags.qsTileFocusState()) {
             if (gainFocus) {
-                qsTileFocusBackground.setBounds(0, 0, width, height)
-                overlay.add(qsTileFocusBackground)
+                qsTileFocusBackground.setBounds(0, 0, iconContainer.width, iconContainer.height)
+                iconContainer.overlay.add(qsTileFocusBackground)
             } else {
-                overlay.clear()
+                iconContainer.overlay.clear()
             }
         }
     }
@@ -413,7 +501,7 @@ constructor(
     }
 
     override fun getIconWithBackground(): View {
-        return icon
+        return iconContainer
     }
 
     override fun init(tile: QSTile) {
@@ -522,7 +610,7 @@ constructor(
     override fun setClickable(clickable: Boolean) {
         super.setClickable(clickable)
         if (!Flags.qsTileFocusState()) {
-            background =
+            iconContainer.background =
                 if (clickable && showRippleEffect) {
                     qsTileBackground.also {
                         // In case that the colorBackgroundDrawable was used as the background, make
@@ -555,6 +643,8 @@ constructor(
     override fun setShouldBlockVisibilityChanges(block: Boolean) {
         launchableViewDelegate.setShouldBlockVisibilityChanges(block)
     }
+
+    override fun getAnimatedView(): LaunchableView = iconContainer
 
     override fun setVisibility(visibility: Int) {
         launchableViewDelegate.setVisibility(visibility)
@@ -707,17 +797,13 @@ constructor(
         }
         if (!Objects.equals(secondaryLabel.text, state.secondaryLabel)) {
             secondaryLabel.text = state.secondaryLabel
-            secondaryLabel.visibility =
-                if (TextUtils.isEmpty(state.secondaryLabel)) {
-                    GONE
-                } else {
-                    VISIBLE
-                }
         }
+        secondaryLabel.visibility =
+            if (TextUtils.isEmpty(state.secondaryLabel)) INVISIBLE else VISIBLE
 
         // Colors
         if (state.state != lastState || state.disabledByPolicy != lastDisabledByPolicy) {
-            singleAnimator.cancel()
+            tileAnimator.cancel()
             mQsLogger?.logTileBackgroundColorUpdateIfInternetTile(
                 state.spec,
                 state.state,
@@ -725,6 +811,10 @@ constructor(
                 getBackgroundColorForState(state.state, state.disabledByPolicy),
             )
             if (allowAnimations) {
+                shapeAnimator.setFloatValues(
+                    getCornerRadiusForState(lastState),
+                    getCornerRadiusForState(state.state),
+                )
                 singleAnimator.setValues(
                     colorValuesHolder(
                         BACKGROUND_NAME,
@@ -752,7 +842,7 @@ constructor(
                         getOverlayColorForState(state.state),
                     ),
                 )
-                singleAnimator.start()
+                tileAnimator.start()
             } else {
                 setAllColors(
                     getBackgroundColorForState(state.state, state.disabledByPolicy),
@@ -761,6 +851,7 @@ constructor(
                     getChevronColorForState(state.state, state.disabledByPolicy),
                     getOverlayColorForState(state.state),
                 )
+                changeCornerRadius(getCornerRadiusForState(state.state))
             }
         }
 
@@ -771,7 +862,10 @@ constructor(
 
         lastState = state.state
         lastDisabledByPolicy = state.disabledByPolicy
-        lastIconTint = icon.getColor(state)
+        lastIconTint = getA11IconColorForState(state.state, state.disabledByPolicy)
+        if (icon.mIcon is ImageView) {
+            icon.setTintImmediately(icon.mIcon as ImageView, lastIconTint)
+        }
 
         // Long-press effects
         updateLongPressEffect(state.handlesLongClick)
@@ -859,6 +953,12 @@ constructor(
         return resources.getStringArray(arrayResId)[Tile.STATE_UNAVAILABLE]
     }
 
+    private fun getCornerRadiusForState(state: Int): Float =
+        when (state) {
+            Tile.STATE_ACTIVE -> radiusActive
+            else -> radiusInactive
+        }
+
     /*
      * The view should not be animated if it's not on screen and no part of it is visible.
      */
@@ -911,6 +1011,26 @@ constructor(
 
     private fun getChevronColorForState(state: Int, disabledByPolicy: Boolean = false): Int =
         getSecondaryLabelColorForState(state, disabledByPolicy)
+
+    private fun getA11IconColorForState(state: Int, disabledByPolicy: Boolean = false): Int {
+        val night =
+            resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+                Configuration.UI_MODE_NIGHT_YES
+        return when {
+            state == Tile.STATE_UNAVAILABLE || disabledByPolicy ->
+                if (night) Utils.getColorAttrDefaultColor(context, R.attr.outline)
+                else Utils.applyAlpha(0.38f, Color.BLACK)
+            state == Tile.STATE_INACTIVE ->
+                if (night) {
+                    Utils.getColorAttrDefaultColor(context, R.attr.onShadeInactiveVariant)
+                } else {
+                    Color.BLACK
+                }
+            state == Tile.STATE_ACTIVE ->
+                Utils.getColorAttrDefaultColor(context, R.attr.onShadeActive)
+            else -> Color.TRANSPARENT
+        }
+    }
 
     private fun getOverlayColorForState(state: Int): Int {
         return when (state) {
@@ -1035,7 +1155,7 @@ constructor(
             right = initialLongPressProperties?.width?.toInt() ?: measuredWidth,
             bottom = initialLongPressProperties?.height?.toInt() ?: measuredHeight,
         )
-        changeCornerRadius(resources.getDimensionPixelSize(R.dimen.qs_corner_radius).toFloat())
+        changeCornerRadius(getCornerRadiusForState(lastState))
         setAllColors(
             getBackgroundColorForState(lastState, lastDisabledByPolicy),
             getLabelColorForState(lastState, lastDisabledByPolicy),

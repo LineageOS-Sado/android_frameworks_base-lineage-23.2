@@ -216,6 +216,18 @@ public class QSPanel extends LinearLayout implements Tunable {
         mMovableContentStartIndex++;
     }
 
+    public void updateBrightnessView(boolean visible, boolean atTop) {
+        if (mBrightnessView == null) return;
+        mBrightnessView.setVisibility(visible ? VISIBLE : GONE);
+        int targetIndex = atTop ? 0 : indexOfChild((View) mTileLayout) + 1;
+        if (targetIndex < 0) targetIndex = getChildCount();
+        if (indexOfChild(mBrightnessView) != targetIndex) {
+            removeView(mBrightnessView);
+            addView(mBrightnessView, Math.min(targetIndex, getChildCount()));
+        }
+        setBrightnessViewMargin();
+    }
+
     private void setBrightnessViewMargin() {
         if (mBrightnessView != null) {
             MarginLayoutParams lp = (MarginLayoutParams) mBrightnessView.getLayoutParams();
@@ -350,9 +362,7 @@ public class QSPanel extends LinearLayout implements Tunable {
 
     @Override
     public void onTuningChanged(String key, String newValue) {
-        if (QS_SHOW_BRIGHTNESS.equals(key) && mBrightnessView != null) {
-            updateViewVisibilityForTuningValue(mBrightnessView, newValue);
-        }
+        // LineageSettings.Secure controls brightness visibility in QSPanelController.
     }
 
     private void updateViewVisibilityForTuningValue(View view, @Nullable String newValue) {
