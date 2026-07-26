@@ -257,15 +257,20 @@ constructor(
         val iconContainerSize = resources.getDimensionPixelSize(R.dimen.qs_quick_tile_size)
         radiusActive = iconContainerSize / 2f
         radiusInactive = iconContainerSize / 4f
-        iconContainer = LaunchableLinearLayout(context).apply {
-            layoutParams = LayoutParams(iconContainerSize, iconContainerSize)
-            clipChildren = false
-            clipToPadding = false
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            isFocusable = true
-            background = createTileBackground()
-        }
+        iconContainer =
+            object : LaunchableLinearLayout(context) {
+                override fun onActivityLaunchAnimationEnd() {
+                    this@QSTileViewImpl.onActivityLaunchAnimationEnd()
+                }
+            }.apply {
+                layoutParams = LayoutParams(iconContainerSize, iconContainerSize)
+                clipChildren = false
+                clipToPadding = false
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                isFocusable = true
+                background = createTileBackground()
+            }
         setColor(getBackgroundColorForState(QSTile.State.DEFAULT_STATE))
 
         val padding = resources.getDimensionPixelSize(R.dimen.qs_tile_padding)
@@ -1045,6 +1050,11 @@ constructor(
         if (longPressEffect != null && !haveLongPressPropertiesBeenReset) {
             resetLongPressEffectProperties()
         }
+        // The launch animator temporarily changes the source drawable's corner radii. Its generic
+        // restoration only tracks one GradientDrawable, while the A11 tile background is layered,
+        // so explicitly restore the shape for the tile's current state before it is shown again.
+        changeCornerRadius(getCornerRadiusForState(lastState))
+        iconContainer.invalidate()
     }
 
     private fun prepareForLaunch() {
