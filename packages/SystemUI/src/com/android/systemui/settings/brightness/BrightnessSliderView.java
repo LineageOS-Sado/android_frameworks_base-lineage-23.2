@@ -42,8 +42,6 @@ import com.android.systemui.Gefingerpoken;
 import com.android.systemui.res.R;
 import com.android.settingslib.Utils;
 
-import lineageos.providers.LineageSettings;
-
 import java.util.Collections;
 
 /**
@@ -112,10 +110,6 @@ public class BrightnessSliderView extends FrameLayout {
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         getContext().getContentResolver().registerContentObserver(
-                LineageSettings.Secure.getUriFor(
-                        LineageSettings.Secure.QS_SHOW_AUTO_BRIGHTNESS),
-                false, mBrightnessObserver, UserHandle.USER_ALL);
-        getContext().getContentResolver().registerContentObserver(
                 Settings.System.getUriFor(Settings.System.SCREEN_BRIGHTNESS_MODE),
                 false, mBrightnessObserver, UserHandle.USER_ALL);
         updateAutoBrightnessButton();
@@ -154,13 +148,10 @@ public class BrightnessSliderView extends FrameLayout {
         if (mAutoBrightness == null) return;
         boolean available = getResources().getBoolean(
                 com.android.internal.R.bool.config_automatic_brightness_available);
-        boolean show = LineageSettings.Secure.getIntForUser(getContext().getContentResolver(),
-                LineageSettings.Secure.QS_SHOW_AUTO_BRIGHTNESS, 1,
-                UserHandle.USER_CURRENT) != 0;
         boolean enabled = isAutoBrightnessEnabled();
         mAutoBrightness.setEnabled(true);
         mAutoBrightness.setClickable(true);
-        mAutoBrightness.setVisibility(available && show ? VISIBLE : GONE);
+        mAutoBrightness.setVisibility(available ? VISIBLE : GONE);
         mAutoBrightness.setImageResource(enabled
                 ? R.drawable.ic_qs_brightness_auto_on
                 : R.drawable.ic_brightness_medium);
