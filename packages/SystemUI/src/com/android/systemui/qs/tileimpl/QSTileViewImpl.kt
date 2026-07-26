@@ -444,7 +444,7 @@ constructor(
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
         super.onLayout(changed, l, t, r, b)
         updateHeight()
-        maybeUpdateLongPressEffectWidth(measuredWidth.toFloat())
+        maybeUpdateLongPressEffectWidth(iconContainer.measuredWidth.toFloat())
     }
 
     private fun maybeUpdateLongPressEffectWidth(width: Float) {
@@ -493,7 +493,7 @@ constructor(
         val constrainedSquishiness = constrainSquishiness(squishinessFraction)
         bottom = top + (actualHeight * constrainedSquishiness).toInt()
         scrollY = (actualHeight - height) / 2
-        maybeUpdateLongPressEffectHeight(actualHeight.toFloat())
+        maybeUpdateLongPressEffectHeight(iconContainer.measuredHeight.toFloat())
     }
 
     override fun updateAccessibilityOrder(previousView: View?): View {
@@ -890,7 +890,10 @@ constructor(
             showRippleEffect = false
             longPressEffect.qsTile?.state?.state = lastState // Store the tile's state
             longPressEffect.resetState()
-            initializeLongPressProperties(measuredHeight, measuredWidth)
+            initializeLongPressProperties(
+                iconContainer.measuredHeight,
+                iconContainer.measuredWidth,
+            )
         } else {
             // Long-press effects might have been enabled before but the new state does not
             // handle a long-press. In this case, we go back to the behaviour of a regular tile
@@ -1101,7 +1104,7 @@ constructor(
         val deltaH = (newHeight - startingHeight) / 2
         val deltaW = (newWidth - startingWidth) / 2
 
-        background.updateBounds(
+        iconContainer.background?.updateBounds(
             left = -deltaW,
             top = -deltaH,
             right = newWidth - deltaW,
@@ -1159,11 +1162,11 @@ constructor(
         start + fraction * (end - start)
 
     fun resetLongPressEffectProperties() {
-        background.updateBounds(
+        iconContainer.background?.updateBounds(
             left = 0,
             top = 0,
-            right = initialLongPressProperties?.width?.toInt() ?: measuredWidth,
-            bottom = initialLongPressProperties?.height?.toInt() ?: measuredHeight,
+            right = initialLongPressProperties?.width?.toInt() ?: iconContainer.measuredWidth,
+            bottom = initialLongPressProperties?.height?.toInt() ?: iconContainer.measuredHeight,
         )
         changeCornerRadius(getCornerRadiusForState(lastState))
         setAllColors(
