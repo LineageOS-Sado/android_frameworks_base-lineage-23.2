@@ -35,9 +35,13 @@ import com.android.systemui.media.controls.ui.controller.MediaHierarchyManager;
 import com.android.systemui.media.controls.ui.view.MediaHost;
 import com.android.systemui.media.controls.ui.view.MediaHostState;
 import com.android.systemui.plugins.FalsingManager;
+import com.android.systemui.plugins.VolumeDialogController;
+import com.android.systemui.plugins.qs.QSTile;
+import com.android.systemui.plugins.qs.QSTileView;
 import com.android.systemui.qs.customize.QSCustomizerController;
 import com.android.systemui.qs.dagger.QSScope;
 import com.android.systemui.qs.logging.QSLogger;
+import com.android.systemui.qs.tileimpl.A11VerticalSliderTileView;
 import com.android.systemui.scene.shared.flag.SceneContainerFlag;
 import com.android.systemui.settings.brightness.BrightnessController;
 import com.android.systemui.settings.brightness.BrightnessMirrorHandler;
@@ -76,6 +80,7 @@ public class QSPanelController extends QSPanelControllerBase<QSPanel> {
     private int mLastDensity;
     private final BrightnessSliderController.Factory mBrightnessSliderControllerFactory;
     private final BrightnessController.Factory mBrightnessControllerFactory;
+    private final VolumeDialogController mVolumeDialogController;
 
     protected final MediaCarouselInteractor mMediaCarouselInteractor;
 
@@ -98,6 +103,7 @@ public class QSPanelController extends QSPanelControllerBase<QSPanel> {
             DumpManager dumpManager, MetricsLogger metricsLogger, UiEventLogger uiEventLogger,
             QSLogger qsLogger, BrightnessController.Factory brightnessControllerFactory,
             BrightnessSliderController.Factory brightnessSliderFactory,
+            VolumeDialogController volumeDialogController,
             FalsingManager falsingManager,
             StatusBarKeyguardViewManager statusBarKeyguardViewManager,
             SplitShadeStateController splitShadeStateController,
@@ -113,6 +119,7 @@ public class QSPanelController extends QSPanelControllerBase<QSPanel> {
         mFalsingManager = falsingManager;
         mBrightnessSliderControllerFactory = brightnessSliderFactory;
         mBrightnessControllerFactory = brightnessControllerFactory;
+        mVolumeDialogController = volumeDialogController;
 
         mBrightnessSliderController = brightnessSliderFactory.create(getContext(), mView);
         mView.setBrightnessView(mBrightnessSliderController.getRootView());
@@ -205,7 +212,28 @@ public class QSPanelController extends QSPanelControllerBase<QSPanel> {
     }
 
     private void updateBrightnessSettings() {
-        mView.updateBrightnessView(true, false);
+        mView.updateBrightnessView(false, false);
+    }
+
+    @Override
+    protected QSTileView createTileView(
+            QSTile tile, boolean collapsedView, QSLongPressEffect longPressEffect) {
+        final String spec = tile.getTileSpec();
+        if (QSStyleController.BRIGHTNESS_SLIDER_SPEC.equals(spec)) {
+            return new A11VerticalSliderTileView(
+                    getContext(),
+                    A11VerticalSliderTileView.Type.BRIGHTNESS,
+                    mBrightnessControllerFactory,
+                    null);
+        }
+        if (QSStyleController.VOLUME_SLIDER_SPEC.equals(spec)) {
+            return new A11VerticalSliderTileView(
+                    getContext(),
+                    A11VerticalSliderTileView.Type.VOLUME,
+                    null,
+                    mVolumeDialogController);
+        }
+        return super.createTileView(tile, collapsedView, longPressEffect);
     }
 
 

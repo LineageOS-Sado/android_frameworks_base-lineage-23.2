@@ -29,6 +29,7 @@ import android.os.Bundle
 import android.os.Trace
 import android.os.Trace.TRACE_TAG_APP
 import android.provider.AlarmClock
+import android.util.TypedValue
 import android.view.DisplayCutout
 import android.view.View
 import android.view.ViewGroup
@@ -62,6 +63,7 @@ import com.android.systemui.lifecycle.rememberViewModel
 import com.android.systemui.plugins.ActivityStarter
 import com.android.systemui.qs.ChipVisibilityListener
 import com.android.systemui.qs.HeaderPrivacyIconsController
+import com.android.systemui.qs.flags.QSComposeFragment
 import com.android.systemui.res.R
 import com.android.systemui.shade.ShadeHeaderController.Companion.HEADER_TRANSITION_ID
 import com.android.systemui.shade.ShadeHeaderController.Companion.LARGE_SCREEN_HEADER_CONSTRAINT
@@ -332,10 +334,17 @@ constructor(
             }
 
             override fun onDensityOrFontScaleChanged() {
-                clock.setTextAppearance(R.style.TextAppearance_QS_Status)
-                date.setTextAppearance(R.style.TextAppearance_QS_Status)
+                val textAppearance =
+                    if (QSComposeFragment.isEnabled) {
+                        R.style.TextAppearance_QS_Status
+                    } else {
+                        R.style.TextAppearance_QS_Status_A11
+                    }
+                clock.setTextAppearance(textAppearance)
+                date.setTextAppearance(textAppearance)
+                applyA11HeaderTextSizes()
                 mShadeCarrierGroup.updateTextAppearanceAndTint(
-                    R.style.TextAppearance_QS_Status,
+                    textAppearance,
                     getFgColor(),
                     getBgColor(),
                 )
@@ -540,24 +549,53 @@ constructor(
         // Use resources.getXml instead of passing the resource id due to bug b/205018300
         header
             .getConstraintSet(QQS_HEADER_CONSTRAINT)
-            .load(context, resources.getXml(R.xml.qqs_header))
+            .load(
+                context,
+                resources.getXml(
+                    if (QSComposeFragment.isEnabled) R.xml.qqs_header
+                    else R.xml.a11_qqs_header
+                ),
+            )
         header
             .getConstraintSet(QS_HEADER_CONSTRAINT)
-            .load(context, resources.getXml(R.xml.qs_header))
+            .load(
+                context,
+                resources.getXml(
+                    if (QSComposeFragment.isEnabled) R.xml.qs_header
+                    else R.xml.a11_qs_header
+                ),
+            )
         header
             .getConstraintSet(LARGE_SCREEN_HEADER_CONSTRAINT)
             .load(context, resources.getXml(R.xml.large_screen_shade_header))
     }
 
     private fun updateColors() {
-        clock.setTextAppearance(R.style.TextAppearance_QS_Status)
-        date.setTextAppearance(R.style.TextAppearance_QS_Status)
+        val textAppearance =
+            if (QSComposeFragment.isEnabled) {
+                R.style.TextAppearance_QS_Status
+            } else {
+                R.style.TextAppearance_QS_Status_A11
+            }
+        clock.setTextAppearance(textAppearance)
+        date.setTextAppearance(textAppearance)
+        applyA11HeaderTextSizes()
         mShadeCarrierGroup.updateTextAppearanceAndTint(
-            R.style.TextAppearance_QS_Status,
+            textAppearance,
             getFgColor(),
             getBgColor(),
         )
         iconManager.setTint(getFgColor(), getBgColor())
+    }
+
+    private fun applyA11HeaderTextSizes() {
+        if (QSComposeFragment.isEnabled) return
+        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+        date.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+        clock.includeFontPadding = false
+        date.includeFontPadding = false
+        clock.gravity = android.view.Gravity.CENTER_VERTICAL
+        date.gravity = android.view.Gravity.CENTER_VERTICAL
     }
 
     private fun updateCarrierGroupPadding() {

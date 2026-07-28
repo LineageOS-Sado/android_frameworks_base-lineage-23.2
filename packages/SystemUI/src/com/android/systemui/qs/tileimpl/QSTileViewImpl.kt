@@ -22,6 +22,9 @@ import android.animation.PropertyValuesHolder
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.content.res.Resources.ID_NULL
@@ -29,9 +32,11 @@ import android.graphics.Color
 import android.graphics.PorterDuff
 import android.graphics.Rect
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.DrawableContainer
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.RippleDrawable
+import android.media.AudioManager
 import android.os.Trace
 import android.service.quicksettings.Tile
 import android.text.TextUtils
@@ -47,6 +52,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Switch
@@ -123,7 +129,15 @@ constructor(
             updateHeight()
         }
 
-    private val colorActive = Utils.getColorAttrDefaultColor(context, R.attr.shadeActive)
+    private var colorActive =
+        if (
+            resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+                Configuration.UI_MODE_NIGHT_YES
+        ) {
+            Utils.getColorAttrDefaultColor(context, R.attr.shadeActive)
+        } else {
+            context.getColor(R.color.a11_qs_active_background)
+        }
     private var colorInactive =
         if (
             resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
@@ -162,6 +176,16 @@ constructor(
     protected lateinit var sideView: ViewGroup
     private lateinit var customDrawableView: ImageView
     private lateinit var chevronView: ImageView
+    private lateinit var a11DndButton: ImageView
+    private lateinit var a11DndTrack: FrameLayout
+    private lateinit var a11DndDots: Array<View>
+    private var a11RingerReceiverRegistered = false
+    private val a11RingerReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                updateA11DndButtonAppearance(animate = true)
+            }
+        }
     private var mQsLogger: QSLogger? = null
 
     /** Controls if tile background is set to a [RippleDrawable] see [setClickable] */
@@ -175,6 +199,9 @@ constructor(
 
     private var backgroundColor: Int = 0
     private var backgroundOverlayColor: Int = 0
+    private var a11ColumnSpan = 1
+    private var a11RowSpan = 1
+    private var a11TileSpec: String? = null
 
     private var radiusActive: Float = 0f
     private var radiusInactive: Float = 0f
@@ -262,6 +289,41 @@ constructor(
                 override fun onActivityLaunchAnimationEnd() {
                     this@QSTileViewImpl.onActivityLaunchAnimationEnd()
                 }
+
+                override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                    super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+                    if (a11ColumnSpan == 2 && a11TileSpec == "internet") {
+                        labelContainer.measure(
+                            MeasureSpec.makeMeasureSpec(measuredWidth, MeasureSpec.EXACTLY),
+                            MeasureSpec.makeMeasureSpec(measuredHeight, MeasureSpec.EXACTLY),
+                        )
+                    }
+                }
+
+                override fun onLayout(
+                    changed: Boolean,
+                    left: Int,
+                    top: Int,
+                    right: Int,
+                    bottom: Int,
+                ) {
+                    super.onLayout(changed, left, top, right, bottom)
+                    if (a11ColumnSpan != 2 || a11TileSpec != "internet") return
+
+                    val contentLeft = paddingLeft
+                    val contentRight = width - paddingRight
+                    val contentTop = paddingTop
+                    val contentBottom = height - paddingBottom
+                    val iconWidth = icon.measuredWidth
+                    val iconHeight = icon.measuredHeight
+                    val iconLeft = contentLeft
+                    val iconTop = contentTop + (contentBottom - contentTop - iconHeight) / 2
+                    icon.layout(iconLeft, iconTop, iconLeft + iconWidth, iconTop + iconHeight)
+
+                    // The label occupies the complete capsule, independently of the icon. Equal
+                    // safe areas keep long SSIDs clear of the icon without moving their center.
+                    labelContainer.layout(0, 0, width, height)
+                }
             }.apply {
                 layoutParams = LayoutParams(iconContainerSize, iconContainerSize)
                 clipChildren = false
@@ -273,8 +335,8 @@ constructor(
             }
         setColor(getBackgroundColorForState(QSTile.State.DEFAULT_STATE))
 
-        val padding = resources.getDimensionPixelSize(R.dimen.qs_tile_padding)
-        val iconSize = resources.getDimensionPixelSize(R.dimen.qs_icon_size)
+        val padding = resources.getDimensionPixelSize(R.dimen.a11_qs_tile_padding)
+        val iconSize = resources.getDimensionPixelSize(R.dimen.a11_qs_icon_size)
         iconContainer.setPaddingRelative(padding, padding, padding, padding)
         iconContainer.addView(icon, LayoutParams(iconSize, iconSize))
         changeCornerRadius(getCornerRadiusForState(QSTile.State.DEFAULT_STATE))
@@ -282,6 +344,9 @@ constructor(
 
         createAndAddLabels()
         createAndAddSideView()
+        createA11DndButton()
+        moveTileContentIntoContainer()
+        applyA11Geometry()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration?) {
@@ -310,24 +375,13 @@ constructor(
         FontSizeUtils.updateFontSize(label, R.dimen.qs_tile_text_size)
         FontSizeUtils.updateFontSize(secondaryLabel, R.dimen.qs_tile_text_size)
 
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER
-
-        val iconContainerSize = resources.getDimensionPixelSize(R.dimen.qs_quick_tile_size)
-        radiusActive = iconContainerSize / 2f
-        radiusInactive = iconContainerSize / 4f
-        iconContainer.layoutParams.apply {
-            height = iconContainerSize
-            width = iconContainerSize
-        }
-
-        val iconSize = context.resources.getDimensionPixelSize(R.dimen.qs_icon_size)
+        val iconSize = context.resources.getDimensionPixelSize(R.dimen.a11_qs_icon_size)
         icon.layoutParams.apply {
             height = iconSize
             width = iconSize
         }
 
-        val padding = resources.getDimensionPixelSize(R.dimen.qs_tile_padding)
+        val padding = resources.getDimensionPixelSize(R.dimen.a11_qs_tile_padding)
         iconContainer.setPaddingRelative(padding, padding, padding, padding)
 
         val labelMargin = resources.getDimensionPixelSize(R.dimen.qs_label_container_margin)
@@ -341,6 +395,7 @@ constructor(
             height = iconSize
             width = iconSize
         }
+        updateA11DndButtonAppearance()
 
         val endMargin = resources.getDimensionPixelSize(R.dimen.qs_drawable_end_margin)
         (customDrawableView.layoutParams as MarginLayoutParams).apply {
@@ -360,12 +415,19 @@ constructor(
         if (icon.mIcon is ImageView) {
             icon.setTintImmediately(icon.mIcon as ImageView, lastIconTint)
         }
+        applyA11Geometry()
     }
 
     private fun updateBackgroundColorsForTheme() {
         val night =
             resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
                 Configuration.UI_MODE_NIGHT_YES
+        colorActive =
+            if (night) {
+                Utils.getColorAttrDefaultColor(context, R.attr.shadeActive)
+            } else {
+                context.getColor(R.color.a11_qs_active_background)
+            }
         colorInactive =
             if (night) {
                 Utils.getColorAttrDefaultColor(context, R.attr.shadeInactive)
@@ -380,17 +442,264 @@ constructor(
             resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
                 Configuration.UI_MODE_NIGHT_YES
         colorLabelActive =
-            if (night) Utils.getColorAttrDefaultColor(context, R.attr.onShadeInactive)
-            else Color.BLACK
+            if (night) {
+                Utils.getColorAttrDefaultColor(context, R.attr.onShadeActive)
+            } else {
+                context.getColor(R.color.a11_qs_active_foreground)
+            }
         colorLabelInactive =
-            if (night) Utils.getColorAttrDefaultColor(context, R.attr.onShadeInactiveVariant)
-            else Color.BLACK
+            if (night) {
+                Utils.getColorAttrDefaultColor(context, R.attr.onShadeInactive)
+            } else {
+                Color.BLACK
+            }
         colorSecondaryLabelActive =
-            if (night) Utils.getColorAttrDefaultColor(context, R.attr.onShadeInactiveVariant)
-            else Color.BLACK
+            if (night) {
+                Utils.getColorAttrDefaultColor(context, R.attr.onShadeActiveVariant)
+            } else {
+                Utils.applyAlpha(0.82f, Color.WHITE)
+            }
         colorSecondaryLabelInactive =
-            if (night) Utils.getColorAttrDefaultColor(context, R.attr.outline)
-            else Color.BLACK
+            if (night) {
+                Utils.getColorAttrDefaultColor(context, R.attr.onShadeInactiveVariant)
+            } else {
+                Utils.applyAlpha(0.72f, Color.BLACK)
+            }
+    }
+
+    fun setA11ColumnSpan(columnSpan: Int) {
+        val sanitized = if (columnSpan == 2) 2 else 1
+        if (a11ColumnSpan == sanitized) return
+        a11ColumnSpan = sanitized
+        applyA11Geometry()
+        requestLayout()
+    }
+
+    fun setA11RowSpan(rowSpan: Int) {
+        val sanitized = if (rowSpan == 2) 2 else 1
+        if (a11RowSpan == sanitized) return
+        a11RowSpan = sanitized
+        applyA11Geometry()
+        requestLayout()
+    }
+
+    private fun moveTileContentIntoContainer() {
+        removeView(labelContainer)
+        removeView(sideView)
+        iconContainer.addView(labelContainer)
+        iconContainer.addView(sideView)
+        iconContainer.addView(a11DndTrack)
+    }
+
+    private fun applyA11Geometry() {
+        if (!::iconContainer.isInitialized || !::labelContainer.isInitialized) return
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        val tileSize = resources.getDimensionPixelSize(R.dimen.a11_qs_tile_height)
+        iconContainer.layoutParams =
+            LayoutParams(
+                if (a11ColumnSpan == 2) LayoutParams.MATCH_PARENT else tileSize,
+                if (a11RowSpan == 2) LayoutParams.MATCH_PARENT else tileSize,
+            )
+        iconContainer.orientation =
+            if (a11ColumnSpan == 2) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+        iconContainer.gravity = Gravity.CENTER
+        label.maxLines = 1
+        label.ellipsize = TextUtils.TruncateAt.END
+        label.isSelected = false
+        secondaryLabel.maxLines = 1
+        secondaryLabel.ellipsize = TextUtils.TruncateAt.END
+        secondaryLabel.isSelected = false
+        val radius = resources.getDimensionPixelSize(R.dimen.a11_qs_tile_height) / 2f
+        radiusActive = radius
+        radiusInactive = radius
+        val dnd = a11ColumnSpan == 2 && a11TileSpec == "dnd"
+        val internet = a11ColumnSpan == 2 && a11TileSpec == "internet"
+        icon.visibility = if (dnd) GONE else VISIBLE
+        labelContainer.visibility = if (a11ColumnSpan == 2 && !dnd) VISIBLE else GONE
+        sideView.visibility = if (a11ColumnSpan == 2 && !dnd && !internet) VISIBLE else GONE
+        a11DndTrack.visibility = if (dnd) VISIBLE else GONE
+        val labelParams = labelContainer.layoutParams as LayoutParams
+        labelParams.width =
+            if (internet) LayoutParams.MATCH_PARENT
+            else if (a11ColumnSpan == 2) 0
+            else LayoutParams.WRAP_CONTENT
+        labelParams.height =
+            if (internet) LayoutParams.MATCH_PARENT else LayoutParams.WRAP_CONTENT
+        labelParams.weight = if (a11ColumnSpan == 2 && !internet) 1f else 0f
+        labelParams.topMargin = 0
+        labelContainer.layoutParams = labelParams
+        labelContainer.gravity = if (internet) Gravity.CENTER else Gravity.NO_GRAVITY
+        val internetSafeArea =
+            if (internet) {
+                resources.getDimensionPixelSize(R.dimen.a11_qs_icon_size) +
+                    resources.getDimensionPixelSize(R.dimen.a11_qs_tile_padding)
+            } else {
+                0
+            }
+        labelContainer.setPaddingRelative(internetSafeArea, 0, internetSafeArea, 0)
+        label.gravity = Gravity.CENTER
+        labelContainer.translationX = 0f
+        changeCornerRadius(radius)
+    }
+
+    private fun createA11DndButton() {
+        val size = resources.getDimensionPixelSize(R.dimen.a11_qs_dnd_button_size)
+        val dotSize = resources.getDimensionPixelSize(R.dimen.a11_qs_dnd_dot_size)
+        val modes =
+            intArrayOf(
+                AudioManager.RINGER_MODE_VIBRATE,
+                AudioManager.RINGER_MODE_NORMAL,
+                AudioManager.RINGER_MODE_SILENT,
+            )
+        val hitRow =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams =
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                    )
+            }
+        val dots = ArrayList<View>(3)
+        modes.forEach { mode ->
+            val zone =
+                FrameLayout(context).apply {
+                    isClickable = true
+                    isFocusable = true
+                    layoutParams = LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
+                    setOnClickListener { setA11RingerMode(mode) }
+                }
+            val dot =
+                View(context).apply {
+                    background =
+                        GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(colorActive)
+                        }
+                }
+            zone.addView(
+                dot,
+                FrameLayout.LayoutParams(dotSize, dotSize, Gravity.CENTER),
+            )
+            dots.add(dot)
+            hitRow.addView(zone)
+        }
+        a11DndDots = dots.toTypedArray()
+        a11DndButton =
+            ImageView(context).apply {
+                setImageResource(R.drawable.ic_notification_bell)
+                setPadding(size / 4, size / 4, size / 4, size / 4)
+                isClickable = false
+                layoutParams =
+                    FrameLayout.LayoutParams(size, size, Gravity.CENTER_VERTICAL)
+            }
+        a11DndTrack =
+            FrameLayout(context).apply {
+                visibility = GONE
+                layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
+                addView(hitRow)
+                addView(a11DndButton)
+                addOnAttachStateChangeListener(
+                    object : View.OnAttachStateChangeListener {
+                        override fun onViewAttachedToWindow(v: View) {
+                            if (!a11RingerReceiverRegistered) {
+                                context.registerReceiver(
+                                    a11RingerReceiver,
+                                    IntentFilter(AudioManager.RINGER_MODE_CHANGED_ACTION),
+                                    Context.RECEIVER_NOT_EXPORTED,
+                                )
+                                a11RingerReceiverRegistered = true
+                            }
+                            updateA11DndButtonAppearance(animate = false)
+                        }
+
+                        override fun onViewDetachedFromWindow(v: View) {
+                            if (a11RingerReceiverRegistered) {
+                                context.unregisterReceiver(a11RingerReceiver)
+                                a11RingerReceiverRegistered = false
+                            }
+                        }
+                    }
+                )
+        }
+        updateA11DndButtonAppearance(animate = false)
+    }
+
+    private fun setA11RingerMode(mode: Int) {
+        context.getSystemService(AudioManager::class.java)?.ringerModeInternal = mode
+        performHapticFeedback(android.view.HapticFeedbackConstants.CONTEXT_CLICK)
+        updateA11DndButtonAppearance(animate = true)
+        announceForAccessibility(
+            when (mode) {
+                AudioManager.RINGER_MODE_VIBRATE -> "Vibrate"
+                AudioManager.RINGER_MODE_SILENT -> "Silent"
+                else -> "Ring"
+            }
+        )
+    }
+
+    private fun updateA11DndButtonAppearance(animate: Boolean = false) {
+        if (!::a11DndButton.isInitialized) return
+        a11DndButton.background =
+            GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(colorActive)
+            }
+        a11DndButton.imageTintList = ColorStateList.valueOf(colorLabelActive)
+        val dotColor =
+            Color.argb(
+                96,
+                Color.red(colorActive),
+                Color.green(colorActive),
+                Color.blue(colorActive),
+            )
+        val mode =
+            context.getSystemService(AudioManager::class.java)?.ringerModeInternal
+                ?: AudioManager.RINGER_MODE_NORMAL
+        fun updateDot(dot: View) {
+            dot.background =
+                GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(dotColor)
+                }
+        }
+        a11DndDots.forEach(::updateDot)
+        val index =
+            when (mode) {
+                AudioManager.RINGER_MODE_VIBRATE -> 0
+                AudioManager.RINGER_MODE_SILENT -> 2
+                else -> 1
+            }
+        a11DndButton.setImageResource(
+            when (mode) {
+                AudioManager.RINGER_MODE_VIBRATE -> R.drawable.ic_volume_ringer_vibrate
+                AudioManager.RINGER_MODE_SILENT -> R.drawable.ic_volume_ringer_mute
+                else -> R.drawable.ic_notification_bell
+            }
+        )
+        a11DndButton.contentDescription =
+            when (mode) {
+                AudioManager.RINGER_MODE_VIBRATE -> "Vibrate"
+                AudioManager.RINGER_MODE_SILENT -> "Silent"
+                else -> "Ring"
+            }
+        a11DndTrack.post {
+            if (a11DndTrack.width == 0) return@post
+            val targetX =
+                a11DndTrack.width * (index + 0.5f) / 3f - a11DndButton.width / 2f
+            a11DndButton.animate().cancel()
+            if (animate && a11DndButton.isLaidOut) {
+                a11DndButton
+                    .animate()
+                    .x(targetX)
+                    .setDuration(220L)
+                    .setInterpolator(Interpolators.FAST_OUT_SLOW_IN)
+                    .start()
+            } else {
+                a11DndButton.x = targetX
+            }
+        }
     }
 
     private fun createAndAddLabels() {
@@ -445,6 +754,41 @@ constructor(
         super.onLayout(changed, l, t, r, b)
         updateHeight()
         maybeUpdateLongPressEffectWidth(iconContainer.measuredWidth.toFloat())
+        refreshA11LongPressGeometryAfterLayout()
+    }
+
+    /**
+     * Secondary ViewPager pages receive tile state before they are attached and measured. Their
+     * long-press properties are consequently first initialized with a 0x0 container. Refresh the
+     * complete geometry after layout, including the radius (not only width/height), so an
+     * off-screen A11 tile cannot animate from a square.
+     */
+    private fun refreshA11LongPressGeometryAfterLayout() {
+        if (
+            com.android.systemui.qs.flags.QSComposeFragment.isEnabled ||
+                !isLongClickable ||
+                longPressEffect == null ||
+                !hasLongClickEffect
+        ) {
+            return
+        }
+        val laidOutWidth = iconContainer.measuredWidth.toFloat()
+        val laidOutHeight = iconContainer.measuredHeight.toFloat()
+        if (laidOutWidth <= 0f || laidOutHeight <= 0f) return
+
+        val initial = initialLongPressProperties ?: return
+        val final = finalLongPressProperties ?: return
+        initial.width = laidOutWidth
+        initial.height = laidOutHeight
+        initial.cornerRadius = minOf(laidOutWidth, laidOutHeight) / 2f
+        final.width = LONG_PRESS_EFFECT_WIDTH_SCALE * laidOutWidth
+        final.height = LONG_PRESS_EFFECT_HEIGHT_SCALE * laidOutHeight
+        final.cornerRadius =
+            resources.getDimensionPixelSize(R.dimen.qs_corner_radius).toFloat()
+        prepareForLaunch()
+        if (longPressEffect?.state == QSLongPressEffect.State.IDLE) {
+            changeCornerRadius(initial.cornerRadius)
+        }
     }
 
     private fun maybeUpdateLongPressEffectWidth(width: Float) {
@@ -748,6 +1092,7 @@ constructor(
 
     // HANDLE STATE CHANGES RELATED METHODS
     protected open fun handleStateChanged(state: QSTile.State) {
+        a11TileSpec = state.spec
         val allowAnimations = animationsEnabled()
         isClickable = state.state != Tile.STATE_UNAVAILABLE
         isLongClickable = state.handlesLongClick
@@ -797,14 +1142,25 @@ constructor(
         }
 
         // Labels
-        if (!Objects.equals(label.text, state.label)) {
-            label.text = state.label
+        val internetSingleLine =
+            a11ColumnSpan == 2 &&
+                state.spec == "internet" &&
+                !TextUtils.isEmpty(state.secondaryLabel)
+        val displayedLabel = if (internetSingleLine) state.secondaryLabel else state.label
+        val displayedSecondaryLabel = if (internetSingleLine) null else state.secondaryLabel
+        if (!Objects.equals(label.text, displayedLabel)) {
+            label.text = displayedLabel
         }
-        if (!Objects.equals(secondaryLabel.text, state.secondaryLabel)) {
-            secondaryLabel.text = state.secondaryLabel
+        if (!Objects.equals(secondaryLabel.text, displayedSecondaryLabel)) {
+            secondaryLabel.text = displayedSecondaryLabel
         }
         secondaryLabel.visibility =
-            if (TextUtils.isEmpty(state.secondaryLabel)) INVISIBLE else VISIBLE
+            if (TextUtils.isEmpty(displayedSecondaryLabel)) {
+                if (internetSingleLine) GONE else INVISIBLE
+            } else {
+                VISIBLE
+            }
+        applyA11Geometry()
 
         // Colors
         if (state.state != lastState || state.disabledByPolicy != lastDisabledByPolicy) {
@@ -871,6 +1227,15 @@ constructor(
         if (icon.mIcon is ImageView) {
             icon.setTintImmediately(icon.mIcon as ImageView, lastIconTint)
         }
+        val a11DndWide = a11ColumnSpan == 2 && state.spec == "dnd"
+        labelContainer.visibility =
+            if (a11ColumnSpan == 2 && !a11DndWide) VISIBLE else GONE
+        sideView.visibility =
+            if (a11ColumnSpan == 2 && !a11DndWide && state.spec != "internet") {
+                sideView.visibility
+            } else {
+                GONE
+            }
 
         // Long-press effects
         updateLongPressEffect(state.handlesLongClick)
@@ -961,11 +1326,7 @@ constructor(
         return resources.getStringArray(arrayResId)[Tile.STATE_UNAVAILABLE]
     }
 
-    private fun getCornerRadiusForState(state: Int): Float =
-        when (state) {
-            Tile.STATE_ACTIVE -> radiusActive
-            else -> radiusInactive
-        }
+    private fun getCornerRadiusForState(state: Int): Float = radiusActive
 
     /*
      * The view should not be animated if it's not on screen and no part of it is visible.
@@ -1035,7 +1396,11 @@ constructor(
                     Color.BLACK
                 }
             state == Tile.STATE_ACTIVE ->
-                Utils.getColorAttrDefaultColor(context, R.attr.onShadeActive)
+                if (night) {
+                    Utils.getColorAttrDefaultColor(context, R.attr.onShadeActive)
+                } else {
+                    context.getColor(R.color.a11_qs_active_foreground)
+                }
             else -> Color.TRANSPARENT
         }
     }
@@ -1111,7 +1476,6 @@ constructor(
             bottom = newHeight - deltaH,
         )
 
-        // Radius change
         val newRadius =
             interpolateFloat(
                 effectProgress,
@@ -1182,11 +1546,20 @@ constructor(
 
     @VisibleForTesting
     fun initializeLongPressProperties(startingHeight: Int, startingWidth: Int) {
+        val a11 = !com.android.systemui.qs.flags.QSComposeFragment.isEnabled
+        val startingRadius =
+            if (a11) minOf(startingWidth, startingHeight) / 2f
+            else resources.getDimensionPixelSize(R.dimen.qs_corner_radius).toFloat()
+        val finalWidth = LONG_PRESS_EFFECT_WIDTH_SCALE * startingWidth
+        val finalHeight = LONG_PRESS_EFFECT_HEIGHT_SCALE * startingHeight
+        val finalRadius =
+            if (a11) resources.getDimensionPixelSize(R.dimen.qs_corner_radius).toFloat()
+            else resources.getDimensionPixelSize(R.dimen.qs_corner_radius).toFloat() - 20
         initialLongPressProperties =
             QSLongPressProperties(
                 height = startingHeight.toFloat(),
                 width = startingWidth.toFloat(),
-                resources.getDimensionPixelSize(R.dimen.qs_corner_radius).toFloat(),
+                startingRadius,
                 getBackgroundColorForState(lastState),
                 getLabelColorForState(lastState),
                 getSecondaryLabelColorForState(lastState),
@@ -1197,9 +1570,9 @@ constructor(
 
         finalLongPressProperties =
             QSLongPressProperties(
-                height = LONG_PRESS_EFFECT_HEIGHT_SCALE * startingHeight,
-                width = LONG_PRESS_EFFECT_WIDTH_SCALE * startingWidth,
-                resources.getDimensionPixelSize(R.dimen.qs_corner_radius).toFloat() - 20,
+                height = finalHeight,
+                width = finalWidth,
+                finalRadius,
                 getBackgroundColorForState(Tile.STATE_ACTIVE),
                 getLabelColorForState(Tile.STATE_ACTIVE),
                 getSecondaryLabelColorForState(Tile.STATE_ACTIVE),
@@ -1211,10 +1584,28 @@ constructor(
     }
 
     private fun changeCornerRadius(radius: Float) {
-        for (i in 0 until backgroundDrawable.numberOfLayers) {
-            val layer = backgroundDrawable.getDrawable(i)
-            if (layer is GradientDrawable) {
-                layer.cornerRadius = radius
+        updateDrawableCornerRadius(iconContainer.background, radius)
+        iconContainer.invalidateOutline()
+        iconContainer.invalidate()
+    }
+
+    private fun updateDrawableCornerRadius(drawable: Drawable?, radius: Float) {
+        when (drawable) {
+            null -> return
+            is GradientDrawable -> {
+                drawable.cornerRadius = radius
+                drawable.invalidateSelf()
+            }
+            is LayerDrawable -> {
+                for (i in 0 until drawable.numberOfLayers) {
+                    updateDrawableCornerRadius(drawable.getDrawable(i), radius)
+                }
+            }
+            is DrawableContainer -> {
+                val currentDrawable = drawable.current
+                if (currentDrawable !== drawable) {
+                    updateDrawableCornerRadius(currentDrawable, radius)
+                }
             }
         }
     }

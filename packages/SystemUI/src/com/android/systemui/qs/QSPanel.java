@@ -124,7 +124,9 @@ public class QSPanel extends LinearLayout implements Tunable {
         mMediaTotalBottomMargin = getResources().getDimensionPixelSize(
                 R.dimen.quick_settings_bottom_margin_media);
         mMediaTopMargin = getResources().getDimensionPixelSize(
-                R.dimen.qs_tile_margin_vertical);
+                !com.android.systemui.qs.flags.QSComposeFragment.isEnabled()
+                        ? R.dimen.a11_qqs_media_top_margin
+                        : R.dimen.qs_tile_margin_vertical);
         mContext = context;
 
         setOrientation(VERTICAL);
@@ -636,7 +638,14 @@ public class QSPanel extends LinearLayout implements Tunable {
         if (mUsingMediaPlayer) {
             int marginStart = 0;
             int marginEnd = 0;
-            if (mUsingHorizontalLayout) {
+            if (!com.android.systemui.qs.flags.QSComposeFragment.isEnabled()
+                    && getResources().getConfiguration().orientation
+                            == android.content.res.Configuration.ORIENTATION_PORTRAIT) {
+                // The A11 QS frame already owns the shared inset used by tiles, media and
+                // notifications. Do not apply it a second time to the media host.
+                marginStart = 0;
+                marginEnd = 0;
+            } else if (mUsingHorizontalLayout) {
                 marginEnd = mContentMarginEnd;
             }
             updateMargins(mediaHostView, marginStart, marginEnd);

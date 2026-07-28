@@ -23,7 +23,10 @@ import android.annotation.Nullable;
 import android.content.ComponentName;
 import android.content.res.Configuration;
 import android.content.res.Configuration.Orientation;
+import android.database.ContentObserver;
 import android.metrics.LogMaker;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 
@@ -66,6 +69,7 @@ import java.util.stream.Collectors;
 
 import javax.inject.Provider;
 
+import lineageos.providers.LineageSettings;
 
 /**
  * Controller for QSPanel views.
@@ -97,6 +101,27 @@ public abstract class QSPanelControllerBase<T extends QSPanel> extends ViewContr
     private float mRevealExpansion;
 
     private final QSHost.Callback mQSHostCallback = this::setTiles;
+    private final ContentObserver mA11LayoutObserver =
+            new ContentObserver(new Handler(Looper.getMainLooper())) {
+                @Override
+                public void onChange(boolean selfChange) {
+                    refreshA11TileSpans();
+                }
+            };
+
+    private void refreshA11TileSpans() {
+        for (TileRecord record : mRecords) {
+            record.columnSpan =
+                    A11TileLayoutSpec.getColumnSpan(getContext(), record.tile.getTileSpec());
+            record.rowSpan =
+                    A11TileLayoutSpec.getRowSpan(getContext(), record.tile.getTileSpec());
+            if (record.tileView instanceof QSTileViewImpl) {
+                ((QSTileViewImpl) record.tileView).setA11ColumnSpan(record.columnSpan);
+                ((QSTileViewImpl) record.tileView).setA11RowSpan(record.rowSpan);
+            }
+        }
+        mView.requestLayout();
+    }
 
     private SplitShadeStateController mSplitShadeStateController;
     private final ConfigurationController mConfigurationController;
@@ -205,6 +230,11 @@ public abstract class QSPanelControllerBase<T extends QSPanel> extends ViewContr
         mView.initialize(mQSLogger, mUsingMediaPlayer);
         mQSLogger.logAllTilesChangeListening(mView.isListening(), mView.getDumpableTag(), "");
         mHost.addCallback(mQSHostCallback);
+        getContext().getContentResolver().registerContentObserver(
+                LineageSettings.Secure.getUriFor(
+                        LineageSettings.Secure.QS_TILE_LAYOUT_A11),
+                false,
+                mA11LayoutObserver);
         if (SceneContainerFlag.isEnabled()) {
             registerForMediaInteractorChanges();
         }
@@ -227,6 +257,7 @@ public abstract class QSPanelControllerBase<T extends QSPanel> extends ViewContr
         // will remove the attach listener. We don't need to do that, because once this object is
         // detached from the graph, it will be gc.
         mHost.removeCallback(mQSHostCallback);
+        getContext().getContentResolver().unregisterContentObserver(mA11LayoutObserver);
         mDestroyed = true;
         for (TileRecord record : mRecords) {
             record.tile.removeCallback(record.callback);
@@ -381,9 +412,14 @@ public abstract class QSPanelControllerBase<T extends QSPanel> extends ViewContr
 
     private void addTile(final QSTile tile, boolean collapsedView) {
         QSLongPressEffect longPressEffect = mLongPressEffectProvider.get();
-        final QSTileViewImpl tileView = new QSTileViewImpl(
-                getContext(), collapsedView, longPressEffect);
+        final QSTileView tileView = createTileView(tile, collapsedView, longPressEffect);
         final TileRecord r = new TileRecord(tile, tileView);
+        r.columnSpan = A11TileLayoutSpec.getColumnSpan(getContext(), tile.getTileSpec());
+        r.rowSpan = A11TileLayoutSpec.getRowSpan(getContext(), tile.getTileSpec());
+        if (tileView instanceof QSTileViewImpl) {
+            ((QSTileViewImpl) tileView).setA11ColumnSpan(r.columnSpan);
+            ((QSTileViewImpl) tileView).setA11RowSpan(r.rowSpan);
+        }
         // TODO(b/250618218): Remove the QSLogger in QSTileViewImpl once we know the root cause of
         // b/250618218.
         try {
@@ -397,6 +433,11 @@ public abstract class QSPanelControllerBase<T extends QSPanel> extends ViewContr
         mView.addTile(r);
         mRecords.add(r);
         mCachedSpecs = getTilesSpecs();
+    }
+
+    protected QSTileView createTileView(
+            QSTile tile, boolean collapsedView, QSLongPressEffect longPressEffect) {
+        return new QSTileViewImpl(getContext(), collapsedView, longPressEffect);
     }
 
     /** */
@@ -641,6 +682,8 @@ public abstract class QSPanelControllerBase<T extends QSPanel> extends ViewContr
 
         public QSTile tile;
         public com.android.systemui.plugins.qs.QSTileView tileView;
+        public int columnSpan = 1;
+        public int rowSpan = 1;
         @Nullable
         public QSTile.Callback callback;
     }

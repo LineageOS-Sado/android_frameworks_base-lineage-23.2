@@ -22,6 +22,9 @@ import com.android.systemui.qs.shared.model.TileCategory
 import com.android.systemui.qs.tileimpl.QSTileImpl
 import com.android.systemui.qs.tiles.AmbientDisplayTile
 import com.android.systemui.qs.tiles.AODTile
+import com.android.systemui.qs.tiles.A11BrightnessSliderTile
+import com.android.systemui.qs.tiles.A11AutoBrightnessTile
+import com.android.systemui.qs.tiles.A11VolumeSliderTile
 import com.android.systemui.qs.tiles.CaffeineTile
 import com.android.systemui.qs.tiles.HeadsUpTile
 import com.android.systemui.qs.tiles.PowerShareTile
@@ -42,6 +45,21 @@ import dagger.multibindings.StringKey
 
 @Module
 interface LineageModule {
+    @Binds
+    @IntoMap
+    @StringKey(A11AutoBrightnessTile.TILE_SPEC)
+    fun bindA11AutoBrightnessTile(tile: A11AutoBrightnessTile): QSTileImpl<*>
+
+    @Binds
+    @IntoMap
+    @StringKey(A11BrightnessSliderTile.TILE_SPEC)
+    fun bindA11BrightnessSliderTile(tile: A11BrightnessSliderTile): QSTileImpl<*>
+
+    @Binds
+    @IntoMap
+    @StringKey(A11VolumeSliderTile.TILE_SPEC)
+    fun bindA11VolumeSliderTile(tile: A11VolumeSliderTile): QSTileImpl<*>
+
     /** Inject AmbientDisplayTile into tileMap in QSModule */
     @Binds
     @IntoMap
