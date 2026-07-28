@@ -289,41 +289,6 @@ constructor(
                 override fun onActivityLaunchAnimationEnd() {
                     this@QSTileViewImpl.onActivityLaunchAnimationEnd()
                 }
-
-                override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-                    super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-                    if (a11ColumnSpan == 2 && a11TileSpec == "internet") {
-                        labelContainer.measure(
-                            MeasureSpec.makeMeasureSpec(measuredWidth, MeasureSpec.EXACTLY),
-                            MeasureSpec.makeMeasureSpec(measuredHeight, MeasureSpec.EXACTLY),
-                        )
-                    }
-                }
-
-                override fun onLayout(
-                    changed: Boolean,
-                    left: Int,
-                    top: Int,
-                    right: Int,
-                    bottom: Int,
-                ) {
-                    super.onLayout(changed, left, top, right, bottom)
-                    if (a11ColumnSpan != 2 || a11TileSpec != "internet") return
-
-                    val contentLeft = paddingLeft
-                    val contentRight = width - paddingRight
-                    val contentTop = paddingTop
-                    val contentBottom = height - paddingBottom
-                    val iconWidth = icon.measuredWidth
-                    val iconHeight = icon.measuredHeight
-                    val iconLeft = contentLeft
-                    val iconTop = contentTop + (contentBottom - contentTop - iconHeight) / 2
-                    icon.layout(iconLeft, iconTop, iconLeft + iconWidth, iconTop + iconHeight)
-
-                    // The label occupies the complete capsule, independently of the icon. Equal
-                    // safe areas keep long SSIDs clear of the icon without moving their center.
-                    labelContainer.layout(0, 0, width, height)
-                }
             }.apply {
                 layoutParams = LayoutParams(iconContainerSize, iconContainerSize)
                 clipChildren = false
@@ -515,30 +480,28 @@ constructor(
         radiusInactive = radius
         val dnd = a11ColumnSpan == 2 && a11TileSpec == "dnd"
         val internet = a11ColumnSpan == 2 && a11TileSpec == "internet"
+        val wide = a11ColumnSpan == 2 && !dnd
+        iconContainer.isBaselineAligned = !wide
         icon.visibility = if (dnd) GONE else VISIBLE
-        labelContainer.visibility = if (a11ColumnSpan == 2 && !dnd) VISIBLE else GONE
+        labelContainer.visibility = if (wide) VISIBLE else GONE
         sideView.visibility = if (a11ColumnSpan == 2 && !dnd && !internet) VISIBLE else GONE
         a11DndTrack.visibility = if (dnd) VISIBLE else GONE
         val labelParams = labelContainer.layoutParams as LayoutParams
-        labelParams.width =
-            if (internet) LayoutParams.MATCH_PARENT
-            else if (a11ColumnSpan == 2) 0
-            else LayoutParams.WRAP_CONTENT
-        labelParams.height =
-            if (internet) LayoutParams.MATCH_PARENT else LayoutParams.WRAP_CONTENT
-        labelParams.weight = if (a11ColumnSpan == 2 && !internet) 1f else 0f
+        labelParams.width = LayoutParams.WRAP_CONTENT
+        labelParams.height = LayoutParams.WRAP_CONTENT
+        labelParams.weight = 0f
+        labelParams.marginStart =
+            if (wide) resources.getDimensionPixelSize(R.dimen.a11_qs_tile_gap)
+            else resources.getDimensionPixelSize(R.dimen.qs_label_container_margin)
+        labelParams.marginEnd = 0
         labelParams.topMargin = 0
+        labelParams.gravity = Gravity.CENTER_VERTICAL
         labelContainer.layoutParams = labelParams
-        labelContainer.gravity = if (internet) Gravity.CENTER else Gravity.NO_GRAVITY
-        val internetSafeArea =
-            if (internet) {
-                resources.getDimensionPixelSize(R.dimen.a11_qs_icon_size) +
-                    resources.getDimensionPixelSize(R.dimen.a11_qs_tile_padding)
-            } else {
-                0
-            }
-        labelContainer.setPaddingRelative(internetSafeArea, 0, internetSafeArea, 0)
+        labelContainer.gravity = if (wide) Gravity.CENTER else Gravity.NO_GRAVITY
+        labelContainer.setPaddingRelative(0, 0, 0, 0)
         label.gravity = Gravity.CENTER
+        secondaryLabel.gravity = Gravity.CENTER
+        (sideView.layoutParams as LayoutParams).gravity = Gravity.CENTER_VERTICAL
         labelContainer.translationX = 0f
         changeCornerRadius(radius)
     }
